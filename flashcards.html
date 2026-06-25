@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flashcards - Programação Funcional</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        h1 { margin-bottom: 10px; color: #2c3e50; text-align: center; }
+        .counter { margin-bottom: 20px; font-size: 1.1em; color: #7f8c8d; }
+
+        /* Tela de Loading/Erro */
+        #status-screen {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+
+        /* Ocultar a tela de flashcards até carregar */
+        #app-screen { display: none; flex-direction: column; align-items: center; width: 100%; }
+
+        /* Estrutura da Carta e Animação 3D */
+        .scene {
+            width: 80%;
+            max-width: 600px;
+            height: 350px;
+            perspective: 1000px;
+            cursor: pointer;
+        }
+
+        .card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 0.6s ease-in-out;
+            transform-style: preserve-3d;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            border-radius: 15px;
+        }
+
+        .card.is-flipped { transform: rotateY(180deg); }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            box-sizing: border-box;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 1.2em;
+            line-height: 1.5;
+        }
+
+        .card-front { background-color: #ffffff; color: #2c3e50; border-top: 8px solid #3498db; }
+        .card-back {
+            background-color: #fdfbfb;
+            color: #2c3e50;
+            transform: rotateY(180deg);
+            border-top: 8px solid #2ecc71;
+            overflow-y: auto;
+        }
+
+        .resposta-badge { font-size: 2em; font-weight: bold; margin-bottom: 15px; }
+        .badge-v { color: #27ae60; }
+        .badge-f { color: #e74c3c; }
+        .justificativa { font-size: 0.95em; color: #555; }
+
+        /* Controles */
+        .controls { margin-top: 30px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+
+        button {
+            padding: 10px 25px;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            background-color: #3498db;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+        
+        .flip-btn { background-color: #9b59b6; }
+        .flip-btn:hover { background-color: #8e44ad; }
+    </style>
+</head>
+<body>
+
+    <div id="status-screen">
+        <h1 id="status-titulo">⏳ Carregando Questões...</h1>
+        <p id="status-mensagem">Procurando pelo arquivo <b>questoes.csv</b> na mesma pasta.</p>
+    </div>
+
+    <div id="app-screen">
+        <h1>🧠 Flashcards de PF</h1>
+        <div class="counter" id="counter">Carta 1 de X</div>
+
+        <div class="scene" onclick="flipCard()">
+            <div class="card" id="flashcard">
+                <div class="card-face card-front">
+                    <p id="pergunta">Carregando pergunta...</p>
+                    <span style="font-size: 0.7em; color: #aaa; margin-top: 20px;">(Clique na carta para virar)</span>
+                </div>
+                <div class="card-face card-back">
+                    <div class="resposta-badge" id="resposta-badge">V</div>
+                    <p class="justificativa" id="justificativa">Justificativa aparecerá aqui.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-prev" onclick="prevCard()">⬅️ Anterior</button>
+            <button class="flip-btn" onclick="flipCard()">Virar Carta</button>
+            <button id="btn-next" onclick="nextCard()">Próxima ➡️</button>
+        </div>
+    </div>
+
+    <script>
+        let questoes = [];
+        let currentIndex = 0;
+        const card = document.getElementById('flashcard');
+
+        // FUNÇÃO PARA EMBARALHAR O ARRAY (Fisher-Yates Shuffle)
+        function embaralharArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]]; // Troca os elementos de lugar
+            }
+        }
+
+        // FUNÇÃO QUE BUSCA O CSV AUTOMATICAMENTE NA PASTA
+        function carregarCSVDaPasta() {
+            fetch('questoes.csv')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Erro de rede: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(texto => {
+                    processarTextoCSV(texto);
+                    
+                    if (questoes.length > 0) {
+                        // Embaralha as questões logo após o carregamento!
+                        embaralharArray(questoes);
+
+                        // Esconde a tela de status e mostra o App
+                        document.getElementById('status-screen').style.display = 'none';
+                        document.getElementById('app-screen').style.display = 'flex';
+                        updateUI();
+                    } else {
+                        throw new Error("O arquivo CSV está vazio ou em formato incorreto.");
+                    }
+                })
+                .catch(erro => {
+                    console.error(erro);
+                    document.getElementById('status-titulo').innerText = "❌ Erro ao carregar";
+                    document.getElementById('status-titulo').style.color = "#e74c3c";
+                    document.getElementById('status-mensagem').innerHTML = `
+                        Não foi possível ler o arquivo <b>questoes.csv</b>.<br><br>
+                        <i>Detalhe: Se você apenas deu um duplo-clique no HTML, o navegador bloqueou por segurança (Erro de CORS).<br>
+                        Você precisa abrir este arquivo usando um Live Server (ex: Extensão do VS Code).</i>
+                    `;
+                });
+        }
+
+        // Parseador Customizado de CSV
+        function processarTextoCSV(texto) {
+            questoes = [];
+            const linhas = texto.split(/\r?\n/);
+            
+            for (let i = 1; i < linhas.length; i++) {
+                if (linhas[i].trim() === "") continue;
+
+                const colunas = parseLinhaCSV(linhas[i]);
+                
+                if (colunas.length >= 3) {
+                    questoes.push({
+                        pergunta: colunas[0].trim(),
+                        resposta: colunas[1].trim().toUpperCase(),
+                        justificativa: colunas[2].trim()
+                    });
+                }
+            }
+        }
+
+        // Divide a coluna lidando com as aspas do formato CSV
+        function parseLinhaCSV(str) {
+            let arr = [];
+            let quote = false;
+            let col = '';
+            for (let i = 0; i < str.length; i++) {
+                let cc = str[i], nc = str[i+1];
+                if (cc === '"' && quote && nc === '"') { col += '"'; i++; continue; }
+                if (cc === '"') { quote = !quote; continue; }
+                if (cc === ',' && !quote) { arr.push(col); col = ''; continue; }
+                col += cc;
+            }
+            arr.push(col);
+            return arr;
+        }
+
+        // Lógica de UI
+        function updateUI() {
+            if (questoes.length === 0) return;
+
+            const currentQ = questoes[currentIndex];
+            
+            document.getElementById('pergunta').innerText = currentQ.pergunta;
+            document.getElementById('justificativa').innerText = currentQ.justificativa;
+            
+            const badge = document.getElementById('resposta-badge');
+            badge.innerText = currentQ.resposta === 'V' ? 'VERDADEIRO' : 'FALSO';
+            badge.className = currentQ.resposta === 'V' ? 'resposta-badge badge-v' : 'resposta-badge badge-f';
+
+            document.getElementById('counter').innerText = `Carta ${currentIndex + 1} de ${questoes.length}`;
+            document.getElementById('btn-prev').disabled = currentIndex === 0;
+            document.getElementById('btn-next').disabled = currentIndex === questoes.length - 1;
+            
+            card.classList.remove('is-flipped');
+        }
+
+        function flipCard() { card.classList.toggle('is-flipped'); }
+
+        function nextCard() {
+            if (currentIndex < questoes.length - 1) {
+                currentIndex++;
+                updateUI();
+            }
+        }
+
+        function prevCard() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateUI();
+            }
+        }
+
+        // Inicia a busca assim que a página abre
+        window.onload = carregarCSVDaPasta;
+    </script>
+</body>
+</html>
